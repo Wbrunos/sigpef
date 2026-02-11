@@ -1,0 +1,122 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>SIGPEF - Justiça Federal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              glass: "rgba(255, 255, 255, 0.9)",
+              glassBorder: "rgba(226, 232, 240, 0.8)",
+              primary: "#1e3a8a", // blue-900 (Justice Blue)
+              accent: "#b91c1c", // red-700 (Justice Red)
+              secondary: "#334155", // slate-700
+            },
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        /* Fundo Institucional Azulado */
+        background-color: #f0f4f8;
+        background-image: 
+          radial-gradient(at 0% 0%, hsla(215, 27%, 92%, 1) 0, transparent 50%), 
+          radial-gradient(at 50% 0%, hsla(215, 30%, 96%, 1) 0, transparent 50%), 
+          radial-gradient(at 100% 0%, hsla(215, 27%, 92%, 1) 0, transparent 50%);
+        min-height: 100vh;
+        color: #1e3a8a;
+        -webkit-font-smoothing: antialiased;
+        /* Impede seleção de texto acidental no app móvel */
+        -webkit-user-select: none;
+        user-select: none;
+        /* Suporte a Safe Area (Notch) */
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+      }
+
+      /* Permite seleção em inputs */
+      input, textarea {
+        -webkit-user-select: text;
+        user-select: text;
+      }
+
+      /* Estilos específicos para Impressão / PDF */
+      @media print {
+        @page {
+          margin: 0.5cm;
+          size: auto;
+        }
+
+        html, body {
+          background-color: white !important;
+          background-image: none !important;
+          height: auto !important;
+          overflow: visible !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+        }
+
+        #root {
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        /* Força fundo branco e texto preto */
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          box-shadow: none !important;
+          text-shadow: none !important;
+        }
+
+        /* Remove elementos flutuantes que causam faixas */
+        .fixed, header, footer, nav, button {
+          display: none !important;
+        }
+
+        /* Garante que tabelas e containers usem largura total sem overflow */
+        .max-w-7xl, .container, main {
+          max-width: none !important;
+          width: 100% !important;
+          padding: 0 !important;
+          margin: 0 !important;
+        }
+        
+        /* Quebra de página segura */
+        tr, .break-inside-avoid {
+          page-break-inside: avoid;
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.3"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
