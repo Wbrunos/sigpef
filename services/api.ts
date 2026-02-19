@@ -282,33 +282,33 @@ export const uploadPautaFile = async (
         // Tenta ler a resposta para ver se é o erro de chave duplicada
         try {
            const responseText = xhr.responseText;
-           const responseJson = JSON.parse(responseText);
            
-           if (responseJson && responseJson.message) {
-             errorMsg = responseJson.message;
-           }
-
-           // Detecção específica do erro Postgres de duplicidade
+           // Detecção específica do erro Postgres de duplicidade (Unique Constraint)
            if (responseText.includes("duplicate key value") || responseText.includes("unique constraint")) {
               isDuplicate = true;
+              
+              // Tenta extrair o nome do periciado que causou o erro para o alerta ser mais claro
+              const match = responseText.match(/Key \(periciado, data_pericia\)=\(([^,]+), ([^)]+)\)/);
+              if (match) {
+                 errorMsg = `REGRA DE NEGÓCIO: O periciado "${match[1]}" já está cadastrado para o dia ${match[2]}. Importação interrompida por duplicidade.`;
+              } else {
+                 errorMsg = "REGRA DE NEGÓCIO: Um ou mais periciados no PDF já possuem agendamento para a mesma data. Importação interrompida.";
+              }
+           } else {
+             const responseJson = JSON.parse(responseText);
+             if (responseJson && responseJson.message) {
+               errorMsg = responseJson.message;
+             }
            }
         } catch (e) {
-           // Se falhar o parse JSON, verifica texto bruto
-           if (xhr.responseText.includes("duplicate key value")) {
-             isDuplicate = true;
-           }
+           // Fallback se não for JSON
         }
 
-        if (isDuplicate) {
-          // TRATAMENTO ESPECIAL: Se for duplicidade, retornamos SUCESSO com AVISO.
-          resolve({ 
-            success: true, 
-            message: 'Importação concluída. Registros duplicados foram ignorados/mantidos.',
-            isWarning: true 
-          });
-        } else {
-          resolve({ success: false, message: errorMsg });
-        }
+        // Retornamos success: false mas com a mensagem tratada
+        resolve({ 
+          success: false, 
+          message: errorMsg
+        });
       }
     });
 

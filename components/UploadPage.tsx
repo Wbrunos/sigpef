@@ -11,7 +11,7 @@ interface UploadHistoryItem {
 }
 
 const UploadPage: React.FC = () => {
-  const { userProfile } = useAuth();
+  const { userProfile, isAdmin } = useAuth();
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   
@@ -25,10 +25,12 @@ const UploadPage: React.FC = () => {
   const [recentUploads, setRecentUploads] = useState<UploadHistoryItem[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Estado para controlar o tempo atual e atualizar a UI (Timer de 10 min)
+  // Define o prazo de expiração com base no cargo: 1h para Admin, 10min para Editor
+  const UNDO_EXPIRATION_MS = isAdmin ? 60 * 60 * 1000 : 10 * 60 * 1000;
+
+  // Estado para controlar o tempo atual e atualizar a UI
   const [currentTime, setCurrentTime] = useState(Date.now());
 
-  // Atualiza o relógio a cada 10 segundos para verificar expiração do botão Undo
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(Date.now());
@@ -95,19 +97,18 @@ const UploadPage: React.FC = () => {
     }
     setFile(file);
     setStatus({ type: null, msg: '' });
-    setProgress(0); // Reset progress
+    setProgress(0); 
   };
 
   const handleUpload = async () => {
     if (!file) return;
 
-    // VERIFICAÇÃO DE DUPLICIDADE
-    // Impede o envio se o arquivo já estiver na lista de recentes
+    // VERIFICAÇÃO DE DUPLICIDADE NO HISTÓRICO LOCAL
     const isDuplicate = recentUploads.some(item => item.fileName === file.name);
     if (isDuplicate) {
       setStatus({ 
         type: 'error', 
-        msg: `O arquivo "${file.name}" já foi enviado recentemente. Para reenviar, exclua o registro anterior ou renomeie o arquivo.` 
+        msg: `O arquivo "${file.name}" já foi enviado recentemente. Se for uma nova versão, renomeie o arquivo ou exclua a importação anterior abaixo.` 
       });
       return;
     }
@@ -116,7 +117,6 @@ const UploadPage: React.FC = () => {
     setProgress(0);
     setStatus({ type: null, msg: '' });
 
-    // Gera um Batch ID único para este upload
     const batchId = crypto.randomUUID();
 
     try {
@@ -125,7 +125,6 @@ const UploadPage: React.FC = () => {
       });
 
       if (result.success) {
-        // Verifica se foi sucesso total ou warning (duplicatas)
         if (result.isWarning) {
             setStatus({ type: 'warning', msg: result.message });
         } else {
@@ -133,62 +132,68 @@ const UploadPage: React.FC = () => {
         }
 
         if (userProfile?.email) {
-           logSystemAction(userProfile.email, 'UPLOAD PAUTA', `Enviou arquivo: ${file.name} (Lote: ${batchId}). Msg: ${result.message}`);
+           logSystemAction(userProfile.email, 'UPLOAD PAUTA', `Enviou: ${file.name} (Lote: ${batchId})`);
         }
         
-        // Salva no histórico mesmo se tiver warning, pois alguns registros podem ter sido criados
         updateHistory({
           batchId,
           fileName: file.name,
           timestamp: Date.now()
         });
 
-        // Delay para limpar o arquivo da UI visualmente após o 100%
         setTimeout(() => setFile(null), 1000);
       } else {
         setStatus({ type: 'error', msg: result.message });
       }
     } catch (e) {
-      setStatus({ type: 'error', msg: 'Ocorreu um erro inesperado durante o upload.' });
+      setStatus({ type: 'error', msg: 'Erro inesperado no upload.' });
     } finally {
       setUploading(false);
     }
   };
 
   const handleUndo = async (item: UploadHistoryItem) => {
-    // Verificação de segurança extra para o clique
     const timeSinceUpload = Date.now() - item.timestamp;
-    const isExpired = timeSinceUpload > 10 * 60 * 1000; // 10 minutos
+    const isExpired = timeSinceUpload > UNDO_EXPIRATION_MS;
     
     if (isExpired) {
-      alert("O prazo de 10 minutos para desfazer esta importação expirou.");
+      alert(`O prazo de ${isAdmin ? '1 hora' : '10 minutos'} para desfazer esta importação expirou.`);
       return;
     }
 
-    if (!window.confirm(`Tem certeza que deseja apagar todos os registros importados do arquivo "${item.fileName}"? Esta ação não pode ser desfeita.`)) {
+    // Alerta de confirmação crítico
+    const confirmMsg = `⚠️ AVISO CRÍTICO DE EXCLUSÃO ⚠️\n\n` +
+      `Você está prestes a apagar PERMANENTEMENTE todos os registros importados do arquivo:\n` +
+      `"${item.fileName}"\n\n` +
+      `Esta ação removerá todos os agendamentos vinculados a este lote do banco de dados.\n\n` +
+      `Deseja realmente prosseguir?`;
+
+    if (!window.confirm(confirmMsg)) {
       return;
     }
 
     setDeletingId(item.batchId);
-    setStatus({ type: null, msg: '' }); // Limpa status anterior
+    setStatus({ type: null, msg: '' }); 
     
     const result = await deleteImportedBatch(item.batchId);
 
     if (result.success) {
       if (result.count && result.count > 0) {
-        setStatus({ type: 'success', msg: `Importação desfeita com sucesso. ${result.count} registros foram removidos da base.` });
+        setStatus({ type: 'success', msg: `Lote removido: ${result.count} registros foram excluídos.` });
         if (userProfile?.email) {
-           logSystemAction(userProfile.email, 'DESFAZER UPLOAD', `Apagou lote ${item.batchId} do arquivo ${item.fileName} (${result.count} registros)`);
+           logSystemAction(userProfile.email, 'DESFAZER UPLOAD', `Apagou lote ${item.batchId} (${result.count} regs)`);
         }
         removeFromHistory(item.batchId);
       } else {
         setStatus({ 
           type: 'warning', 
-          msg: 'O sistema processou o pedido, mas 0 registros foram encontrados para este lote. Verifique se o n8n está salvando o "import_batch_id" corretamente.' 
+          msg: 'Lote processado, mas nenhum registro foi encontrado para remoção.' 
         });
+        // Remove do histórico de qualquer forma para não poluir
+        removeFromHistory(item.batchId);
       }
     } else {
-      setStatus({ type: 'error', msg: 'Erro ao tentar desfazer. Verifique sua conexão ou permissões.' });
+      setStatus({ type: 'error', msg: 'Erro ao desfazer. Verifique permissões.' });
     }
     setDeletingId(null);
   };
@@ -203,7 +208,6 @@ const UploadPage: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
       
-      {/* Header */}
       <div className="bg-white/80 backdrop-blur border border-slate-200 p-6 rounded-[2rem] shadow-sm mb-6">
          <div className="flex items-center gap-4">
             <div className="bg-indigo-100 p-3 rounded-2xl text-indigo-900">
@@ -211,14 +215,15 @@ const UploadPage: React.FC = () => {
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-900 tracking-tight">Upload de Pauta (IA)</h2>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Processamento Inteligente de PDF</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                {isAdmin ? 'Acesso Administrativo (Prazo Undo: 60m)' : 'Acesso Editor (Prazo Undo: 10m)'}
+              </p>
             </div>
          </div>
       </div>
 
       <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border border-slate-100 mb-8">
         
-        {/* Dropzone */}
         <div 
           className={`
             relative flex flex-col items-center justify-center w-full h-80 rounded-[2rem] border-4 border-dashed transition-all duration-300 overflow-hidden
@@ -245,7 +250,7 @@ const UploadPage: React.FC = () => {
                    <CloudUpload size={48} className="text-indigo-400" />
                 </div>
                 <p className="text-lg font-black text-slate-700 mb-2">Arraste seu PDF aqui</p>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Ou clique para selecionar</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ou clique para selecionar</p>
              </div>
           ) : (
              <div className="text-center relative z-10 w-full max-w-sm">
@@ -255,7 +260,7 @@ const UploadPage: React.FC = () => {
                    </div>
                    <div className="flex-1 text-left min-w-0">
                       <p className="text-sm font-black text-slate-800 truncate">{file.name}</p>
-                      <p className="text-xs font-bold text-slate-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                    </div>
                    {!uploading && (
                     <button 
@@ -270,7 +275,6 @@ const UploadPage: React.FC = () => {
              </div>
           )}
 
-          {/* Barra de Progresso Interna */}
           {uploading && (
              <div className="absolute bottom-0 left-0 w-full h-2 bg-slate-200">
                 <div 
@@ -281,21 +285,20 @@ const UploadPage: React.FC = () => {
           )}
         </div>
 
-        {/* Progress Text / Status Messages */}
         {uploading && (
             <div className="mt-6 p-4 rounded-2xl bg-indigo-50 border border-indigo-100 flex flex-col items-center justify-center animate-in fade-in">
                  <div className="flex items-center gap-2 mb-2">
                     <Loader2 className="animate-spin text-indigo-600" size={20} />
                     <span className="text-indigo-900 font-black text-sm uppercase tracking-widest">
-                       {progress < 100 ? `Enviando Arquivo: ${progress}%` : 'Processando IA...'}
+                       {progress < 100 ? `Enviando Arquivo: ${progress}%` : 'Analisando via IA...'}
                     </span>
                  </div>
-                 <p className="text-[10px] text-indigo-400 font-bold">Por favor, não feche a janela.</p>
+                 <p className="text-[9px] text-indigo-400 font-black uppercase tracking-widest">Aguarde a confirmação do tribunal.</p>
             </div>
         )}
 
         {status.msg && !uploading && (
-          <div className={`mt-6 p-4 rounded-2xl flex items-center gap-3 text-sm font-black animate-in fade-in slide-in-from-top-2 ${
+          <div className={`mt-6 p-4 rounded-2xl flex items-center gap-3 text-xs font-black animate-in fade-in slide-in-from-top-2 ${
             status.type === 'error' ? 'bg-red-50 text-red-700 border border-red-100' :
             status.type === 'warning' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
             'bg-emerald-50 text-emerald-700 border border-emerald-100'
@@ -307,46 +310,37 @@ const UploadPage: React.FC = () => {
           </div>
         )}
 
-        {/* Action Button */}
         {!uploading && status.type !== 'success' && status.type !== 'warning' && (
             <div className="mt-8">
             <button
                 onClick={handleUpload}
                 disabled={!file}
                 className={`
-                w-full py-5 rounded-2xl text-sm font-black uppercase tracking-[0.2em] shadow-xl flex items-center justify-center gap-3 transition-all
+                w-full py-5 rounded-2xl text-xs font-black uppercase tracking-[0.2em] shadow-xl flex items-center justify-center gap-3 transition-all
                 ${!file 
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
                     : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 hover:shadow-indigo-300 active:scale-[0.98]'
                 }
                 `}
             >
-                <BrainCircuit size={20} /> Iniciar Processamento IA
+                <BrainCircuit size={20} /> Iniciar Importação Inteligente
             </button>
             </div>
         )}
-
-        <div className="mt-6 text-center">
-           <p className="text-[10px] font-bold text-slate-400 max-w-md mx-auto leading-relaxed">
-             <span className="text-slate-600 uppercase">Nota:</span> O arquivo será processado por Inteligência Artificial. Se o envio chegar a 100% e demorar, é a IA analisando o documento.
-           </p>
-        </div>
       </div>
 
-      {/* Histórico Recente e Desfazer */}
       {recentUploads.length > 0 && (
          <div className="bg-slate-100 rounded-[2rem] p-6 border border-slate-200">
             <div className="flex items-center gap-2 mb-4">
                <History size={16} className="text-slate-400" />
-               <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Envios Recentes (Opções de Desfazer)</h3>
+               <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Últimas Importações (Undo Disponível)</h3>
             </div>
             
             <div className="space-y-3">
                {recentUploads.map((item) => {
-                  // Lógica de Expiração (10 minutos)
                   const timeSinceUpload = currentTime - item.timestamp;
-                  const minutesLeft = Math.max(0, 10 - Math.floor(timeSinceUpload / 60000));
-                  const isExpired = timeSinceUpload > 10 * 60 * 1000;
+                  const minutesLeft = Math.max(0, Math.floor((UNDO_EXPIRATION_MS - timeSinceUpload) / 60000));
+                  const isExpired = timeSinceUpload > UNDO_EXPIRATION_MS;
 
                   return (
                     <div key={item.batchId} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -361,8 +355,8 @@ const UploadPage: React.FC = () => {
                                    {new Date(item.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                 </p>
                                 {!isExpired && (
-                                    <span className="text-[9px] font-black text-amber-500 bg-amber-50 px-1.5 rounded flex items-center gap-1">
-                                       <Clock size={8} /> Expira em {minutesLeft}m
+                                    <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded flex items-center gap-1 border border-amber-100">
+                                       <Clock size={8} /> Expira em {minutesLeft} min
                                     </span>
                                 )}
                              </div>
@@ -377,10 +371,10 @@ const UploadPage: React.FC = () => {
                           <button 
                             onClick={() => handleUndo(item)}
                             disabled={deletingId === item.batchId}
-                            className="w-full sm:w-auto px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                            className="w-full sm:w-auto px-5 py-2.5 bg-red-600 hover:bg-black text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-red-200 active:scale-95"
                           >
                             {deletingId === item.batchId ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
-                            Desfazer Importação
+                            Apagar Importação
                           </button>
                        )}
                     </div>
