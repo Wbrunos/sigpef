@@ -7,7 +7,7 @@ export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 export const USE_MOCK_DATA = false;
 
 // VERSÃO DO SISTEMA
-export const APP_VERSION = '1.9.9';
+export const APP_VERSION = '2.0.0';
 
 // DATA LIMITE PARA EXIBIR AVISOS DE "NOVO" (Formato AAAA-MM-DD)
 // O badge desaparecerá automaticamente após esta data.

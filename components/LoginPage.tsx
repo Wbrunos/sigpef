@@ -203,9 +203,7 @@ const LoginPage: React.FC = () => {
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center ml-1">
                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Senha</label>
-                   {mode === 'login' && (
-                     <button type="button" onClick={() => setMode('recovery')} className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider">Esqueci a senha</button>
-                   )}
+                   {/* Botão Esqueci a Senha Removido conforme solicitação */}
                 </div>
                 <div className="relative group">
                   <Lock className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-900 transition-colors" size={18} />
