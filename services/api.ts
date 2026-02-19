@@ -11,23 +11,26 @@ const formatDate = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+// Função para normalizar textos para MAIÚSCULAS
+const toUpper = (str: string): string => {
+  return (str || '').trim().toUpperCase();
+};
+
 // Função para corrigir nomes de peritos específicos e padronizar
 const normalizePeritoName = (name: string): string => {
   if (!name) return '';
-  let cleanName = name.trim();
+  let cleanName = toUpper(name);
   
-  // Correção específica: STA AGNAL DO LIMA PEREIRA JUNIOR -> Agnaldo Lima Pereira Júnior
-  const upper = cleanName.toUpperCase();
+  // Correção específica mantendo o padrão maiúsculo
   if (
-    upper.includes('STA AGNAL DO LIMA PEREIRA JUNIOR') || 
-    upper.includes('AGNAL DO LIMA') || 
-    upper.includes('STA AGNALDO') ||
-    upper === 'AGNALDO LIMA'
+    cleanName.includes('STA AGNAL DO LIMA PEREIRA JUNIOR') || 
+    cleanName.includes('AGNAL DO LIMA') || 
+    cleanName.includes('STA AGNALDO') ||
+    cleanName === 'AGNALDO LIMA'
   ) {
-    return 'Agnaldo Lima Pereira Júnior';
+    return 'AGNALDO LIMA PEREIRA JÚNIOR';
   }
   
-  // Formatação básica Capitalize
   return cleanName;
 };
 
@@ -36,17 +39,14 @@ const normalizeDate = (raw: any): string => {
   if (!raw) return '';
   let str = String(raw).trim();
   
-  // Se vier no formato "YYYY-MM-DD HH:mm:ss" (comum no Postgres/Supabase), remove o tempo
   if (str.includes(' ')) {
     str = str.split(' ')[0];
   }
 
-  // Se vier no formato ISO "YYYY-MM-DDTHH:mm:ss", remove o tempo
   if (str.includes('T')) {
     str = str.split('T')[0];
   }
 
-  // Se vier no formato brasileiro "DD/MM/YYYY"
   if (str.includes('/')) {
     const parts = str.split('/');
     if (parts.length === 3) {
@@ -60,14 +60,14 @@ const normalizeDate = (raw: any): string => {
 
 const today = new Date();
 const MOCK_DATA: Appointment[] = [
-  { rowId: 2, data: formatDate(today), perito: 'Agnaldo Lima Pereira Júnior', especialidade: 'Cardiologia', periciado: 'João Souza', observacao: '' },
-  { rowId: 3, data: formatDate(today), perito: 'Dra. Ana Maria', especialidade: 'Ortopedia', periciado: 'Maria Oliveira', observacao: 'COMPARECEU' },
-  { rowId: 4, data: formatDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)), perito: 'Agnaldo Lima Pereira Júnior', especialidade: 'Cardiologia', periciado: 'Carlos Lima', observacao: 'NAO COMPARECEU' },
+  { rowId: 2, data: formatDate(today), perito: 'AGNALDO LIMA PEREIRA JÚNIOR', especialidade: 'CARDIOLOGIA', periciado: 'JOÃO SOUZA', observacao: '' },
+  { rowId: 3, data: formatDate(today), perito: 'ANA MARIA', especialidade: 'ORTOPEDIA', periciado: 'MARIA OLIVEIRA', observacao: 'COMPARECEU' },
+  { rowId: 4, data: formatDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)), perito: 'AGNALDO LIMA PEREIRA JÚNIOR', especialidade: 'CARDIOLOGIA', periciado: 'CARLOS LIMA', observacao: 'NAO COMPARECEU' },
 ];
 
 const MOCK_ATTENDANCE: AttendanceRecord[] = [
-  { id: 101, data_pericia: formatDate(today), perito: 'Agnaldo Lima Pereira Júnior', vara: '1ª Vara Cível', sala: 'Sala 05', hora_chegada: '08:00', hora_saida: '' },
-  { id: 102, data_pericia: formatDate(today), perito: 'Dra. Ana Maria', vara: '2ª Vara Família', sala: 'Sala 02', hora_chegada: '08:15', hora_saida: '12:30' }
+  { id: 101, data_pericia: formatDate(today), perito: 'AGNALDO LIMA PEREIRA JÚNIOR', vara: '1ª VARA CÍVEL', sala: 'SALA 05', hora_chegada: '08:00', hora_saida: '' },
+  { id: 102, data_pericia: formatDate(today), perito: 'ANA MARIA', vara: '2ª VARA FAMÍLIA', sala: 'SALA 02', hora_chegada: '08:15', hora_saida: '12:30' }
 ];
 
 // --- APPOINTMENTS (PERICIAS) ---
@@ -84,8 +84,6 @@ export const fetchAppointments = async (): Promise<Appointment[]> => {
   }
 
   try {
-    // Aumentamos o limite para 5000 para não cortar os registros (seu banco já tem 1025)
-    // E ordenamos pela data da perícia para ser funcional
     const { data, error } = await supabase
       .from('pericias')
       .select('*')
@@ -98,9 +96,9 @@ export const fetchAppointments = async (): Promise<Appointment[]> => {
       rowId: item.id,
       data: normalizeDate(item.data_pericia || item.data || item.DATA || item.Data),
       perito: normalizePeritoName(item.perito || item.PERITO || item.Perito),
-      especialidade: item.especialidade || item.ESPECIALIDADE || item.Especialidade,
-      periciado: item.periciado || item.PERICIADO || item.Periciado,
-      observacao: item.observacao || item.OBSERVACAO || item.Observacao || ''
+      especialidade: toUpper(item.especialidade || item.ESPECIALIDADE || item.Especialidade),
+      periciado: toUpper(item.periciado || item.PERICIADO || item.Periciado),
+      observacao: toUpper(item.observacao || item.OBSERVACAO || item.Observacao || '')
     }));
   } catch (error) {
     console.error("Fetch Error:", error);
@@ -112,7 +110,10 @@ export const createAppointment = async (appointment: { data: string; periciado: 
   if (USE_MOCK_DATA) {
     MOCK_DATA.push({
       rowId: Date.now(),
-      ...appointment,
+      data: appointment.data,
+      periciado: toUpper(appointment.periciado),
+      perito: normalizePeritoName(appointment.perito),
+      especialidade: toUpper(appointment.especialidade),
       observacao: ''
     });
     return true;
@@ -122,9 +123,9 @@ export const createAppointment = async (appointment: { data: string; periciado: 
 
   const dbPayload = {
     data_pericia: appointment.data,
-    periciado: appointment.periciado,
-    perito: appointment.perito,
-    especialidade: appointment.especialidade,
+    periciado: toUpper(appointment.periciado),
+    perito: normalizePeritoName(appointment.perito),
+    especialidade: toUpper(appointment.especialidade),
     observacao: ''
   };
 
@@ -136,8 +137,8 @@ export const updateAppointment = async (rowId: number | string, updates: { obser
   if (USE_MOCK_DATA) {
     const index = MOCK_DATA.findIndex(a => a.rowId === rowId);
     if (index !== -1) {
-      if (updates.observacao !== undefined) MOCK_DATA[index].observacao = updates.observacao;
-      if (updates.periciado !== undefined) MOCK_DATA[index].periciado = updates.periciado;
+      if (updates.observacao !== undefined) MOCK_DATA[index].observacao = toUpper(updates.observacao);
+      if (updates.periciado !== undefined) MOCK_DATA[index].periciado = toUpper(updates.periciado);
     }
     return true;
   }
@@ -145,8 +146,8 @@ export const updateAppointment = async (rowId: number | string, updates: { obser
   if (!supabase) return false;
   
   const dbUpdates: any = {};
-  if (updates.observacao !== undefined) dbUpdates.observacao = updates.observacao;
-  if (updates.periciado !== undefined) dbUpdates.periciado = updates.periciado;
+  if (updates.observacao !== undefined) dbUpdates.observacao = toUpper(updates.observacao);
+  if (updates.periciado !== undefined) dbUpdates.periciado = toUpper(updates.periciado);
 
   const { error } = await supabase.from('pericias').update(dbUpdates).eq('id', rowId);
   return !error;
@@ -179,7 +180,12 @@ export const fetchAttendanceRecords = async (): Promise<AttendanceRecord[]> => {
   try {
     const { data, error } = await supabase.from('controle_presenca').select('*').order('data_pericia', { ascending: false });
     if (error) throw error;
-    return (data || []).map(rec => ({ ...rec, perito: normalizePeritoName(rec.perito) }));
+    return (data || []).map(rec => ({ 
+      ...rec, 
+      perito: normalizePeritoName(rec.perito),
+      vara: toUpper(rec.vara),
+      sala: toUpper(rec.sala)
+    }));
   } catch (e) {
     console.error("Erro ao buscar presença:", e);
     return MOCK_ATTENDANCE; 
@@ -187,25 +193,37 @@ export const fetchAttendanceRecords = async (): Promise<AttendanceRecord[]> => {
 };
 
 export const createAttendanceRecord = async (record: Omit<AttendanceRecord, 'id'>): Promise<boolean> => {
+  const normalizedRecord = {
+    ...record,
+    perito: normalizePeritoName(record.perito),
+    vara: toUpper(record.vara),
+    sala: toUpper(record.sala)
+  };
+
   if (USE_MOCK_DATA) {
-    MOCK_ATTENDANCE.push({ ...record, id: Date.now() });
+    MOCK_ATTENDANCE.push({ ...normalizedRecord, id: Date.now() });
     return true;
   }
   if (!supabase) return false;
-  const { error } = await supabase.from('controle_presenca').insert([record]);
+  const { error } = await supabase.from('controle_presenca').insert([normalizedRecord]);
   return !error;
 };
 
 export const updateAttendanceRecord = async (id: number, updates: Partial<AttendanceRecord>): Promise<boolean> => {
+  const normalizedUpdates: any = { ...updates };
+  if (updates.perito) normalizedUpdates.perito = normalizePeritoName(updates.perito);
+  if (updates.vara) normalizedUpdates.vara = toUpper(updates.vara);
+  if (updates.sala) normalizedUpdates.sala = toUpper(updates.sala);
+
   if (USE_MOCK_DATA) {
     const idx = MOCK_ATTENDANCE.findIndex(r => r.id === id);
     if (idx !== -1) {
-       MOCK_ATTENDANCE[idx] = { ...MOCK_ATTENDANCE[idx], ...updates };
+       MOCK_ATTENDANCE[idx] = { ...MOCK_ATTENDANCE[idx], ...normalizedUpdates };
     }
     return true;
   }
   if (!supabase) return false;
-  const { error } = await supabase.from('controle_presenca').update(updates).eq('id', id);
+  const { error } = await supabase.from('controle_presenca').update(normalizedUpdates).eq('id', id);
   return !error;
 };
 
@@ -242,7 +260,7 @@ export const fetchGlobalMessages = async (): Promise<GlobalMessage[]> => {
   }
 };
 
-// --- FILE UPLOAD (WEBHOOK N8N) COM PROGRESSO E TRATAMENTO DE DUPLICATAS ---
+// --- FILE UPLOAD ---
 
 export const uploadPautaFile = async (
   file: File, 
@@ -261,7 +279,6 @@ export const uploadPautaFile = async (
     formData.append('file', file);
     formData.append('batchId', batchId);
 
-    // Evento de progresso
     xhr.upload.addEventListener('progress', (event) => {
       if (event.lengthComputable) {
         const percentComplete = Math.round((event.loaded / event.total) * 100);
@@ -269,25 +286,14 @@ export const uploadPautaFile = async (
       }
     });
 
-    // Evento de finalização (Load)
     xhr.addEventListener('load', () => {
-      // Sucesso HTTP 200-299
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve({ success: true, message: 'Arquivo enviado e processado com sucesso!' });
       } else {
-        // Falha no N8N (Ex: 400, 500)
         let errorMsg = `Erro no servidor: ${xhr.statusText || 'Falha no processamento'}`;
-        let isDuplicate = false;
-
-        // Tenta ler a resposta para ver se é o erro de chave duplicada
         try {
            const responseText = xhr.responseText;
-           
-           // Detecção específica do erro Postgres de duplicidade (Unique Constraint)
            if (responseText.includes("duplicate key value") || responseText.includes("unique constraint")) {
-              isDuplicate = true;
-              
-              // Tenta extrair o nome do periciado que causou o erro para o alerta ser mais claro
               const match = responseText.match(/Key \(periciado, data_pericia\)=\(([^,]+), ([^)]+)\)/);
               if (match) {
                  errorMsg = `REGRA DE NEGÓCIO: O periciado "${match[1]}" já está cadastrado para o dia ${match[2]}. Importação interrompida por duplicidade.`;
@@ -300,26 +306,13 @@ export const uploadPautaFile = async (
                errorMsg = responseJson.message;
              }
            }
-        } catch (e) {
-           // Fallback se não for JSON
-        }
-
-        // Retornamos success: false mas com a mensagem tratada
-        resolve({ 
-          success: false, 
-          message: errorMsg
-        });
+        } catch (e) {}
+        resolve({ success: false, message: errorMsg });
       }
     });
 
-    // Evento de erro de rede
     xhr.addEventListener('error', () => {
       resolve({ success: false, message: 'Falha na conexão de rede.' });
-    });
-
-    // Evento de abortar
-    xhr.addEventListener('abort', () => {
-      resolve({ success: false, message: 'Envio cancelado.' });
     });
 
     xhr.open('POST', N8N_WEBHOOK_URL);
@@ -327,29 +320,20 @@ export const uploadPautaFile = async (
   });
 };
 
-// --- DELETAR LOTE IMPORTADO (UNDO) ---
 export const deleteImportedBatch = async (batchId: string): Promise<{ success: boolean; count?: number }> => {
   if (!supabase) return { success: false };
-
   try {
-    // Requer que a tabela 'pericias' tenha uma coluna 'import_batch_id'
     const { data, error, count } = await supabase
       .from('pericias')
       .delete({ count: 'exact' })
       .eq('import_batch_id', batchId);
 
-    if (error) {
-      console.error('Erro ao deletar lote:', error);
-      return { success: false };
-    }
-
+    if (error) return { success: false };
     return { success: true, count: count || 0 };
   } catch (e) {
-    console.error('Exceção ao deletar lote:', e);
     return { success: false };
   }
 };
-
 
 // --- LOGGING SYSTEM ---
 
@@ -377,9 +361,7 @@ export const logSystemAction = async (userEmail: string, action: string, details
       details: details,
       ip_address: ip
     }]);
-  } catch (e) {
-    console.warn("Falha ao registrar log:", e);
-  }
+  } catch (e) {}
 };
 
 export const fetchSystemLogs = async (): Promise<LogEntry[]> => {

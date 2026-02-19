@@ -28,7 +28,6 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, appointment, onS
     }
   }, [appointment]);
 
-  // Lógica de expiração do badge "NOVO" para o botão excluir
   const showNewBadge = useMemo(() => {
     return new Date() < new Date(BADGE_EXPIRATION_DATE);
   }, []);
@@ -36,7 +35,6 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, appointment, onS
   if (!isOpen || !appointment) return null;
 
   const handleSave = async () => {
-    // Validação básica
     if (!periciadoName.trim()) {
       alert("O nome do periciado não pode ficar vazio.");
       return;
@@ -44,21 +42,23 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, appointment, onS
 
     setIsSaving(true);
     
-    // Chama o onSave com os dois dados
+    // Normalização para maiúsculas antes de enviar
+    const normalizedName = periciadoName.trim().toUpperCase();
+    const normalizedStatus = selectedStatus.trim().toUpperCase();
+
     await onSave(appointment.rowId, { 
-      observacao: selectedStatus, 
-      periciado: periciadoName 
+      observacao: normalizedStatus, 
+      periciado: normalizedName 
     });
     
-    // Log da Ação (verificando se houve mudança de nome ou status para logar corretamente)
     if (userProfile?.email) {
-      const changedName = periciadoName !== appointment.periciado;
-      const changedStatus = selectedStatus !== (appointment.observacao || '');
+      const changedName = normalizedName !== appointment.periciado;
+      const changedStatus = normalizedStatus !== (appointment.observacao || '');
       
       let logDetail = '';
-      if (changedName && changedStatus) logDetail = `Alterou nome para '${periciadoName}' e status para '${selectedStatus}'`;
-      else if (changedName) logDetail = `Corrigiu nome de '${appointment.periciado}' para '${periciadoName}'`;
-      else logDetail = `Alterou status de '${appointment.periciado}' para '${selectedStatus || 'PENDENTE'}'`;
+      if (changedName && changedStatus) logDetail = `Alterou nome para '${normalizedName}' e status para '${normalizedStatus}'`;
+      else if (changedName) logDetail = `Corrigiu nome de '${appointment.periciado}' para '${normalizedName}'`;
+      else logDetail = `Alterou status de '${appointment.periciado}' para '${normalizedStatus || 'PENDENTE'}'`;
 
       await logSystemAction(
         userProfile.email, 
@@ -83,16 +83,13 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, appointment, onS
 
   return (
     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       ></div>
 
-      {/* Modal Content */}
       <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all animate-in fade-in zoom-in duration-200">
         
-        {/* Header */}
         <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
           <h3 className="text-lg font-bold text-slate-800">Editar Agendamento</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -100,10 +97,7 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, appointment, onS
           </button>
         </div>
 
-        {/* Body */}
         <div className="p-6 space-y-5">
-          
-          {/* Campo Editável de Nome */}
           <div>
             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
               <User size={12} /> Nome do Periciado
@@ -112,9 +106,9 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, appointment, onS
               <input 
                 type="text"
                 value={periciadoName}
-                onChange={(e) => setPericiadoName(e.target.value)}
-                className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-900 focus:bg-white transition-all shadow-sm"
-                placeholder="Nome do Periciado"
+                onChange={(e) => setPericiadoName(e.target.value.toUpperCase())}
+                className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-900 focus:bg-white transition-all shadow-sm uppercase"
+                placeholder="NOME DO PERICIADO"
               />
               <Pencil className="absolute right-4 top-3.5 text-slate-300 pointer-events-none group-focus-within:text-blue-900" size={16} />
             </div>
@@ -182,7 +176,7 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, appointment, onS
                     className="sr-only" 
                   />
                   <span className="text-sm font-bold text-slate-500 uppercase tracking-wide">
-                    Pendente / Limpar
+                    PENDENTE / LIMPAR
                   </span>
                   {selectedStatus === '' && (
                     <div className="ml-auto w-2.5 h-2.5 rounded-full bg-blue-900 shadow-sm"></div>
@@ -192,10 +186,7 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, appointment, onS
           </div>
         </div>
 
-        {/* Footer */}
         <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-between gap-3">
-          
-          {/* Botão de Excluir (Apenas Admin) */}
           {isAdmin ? (
              <button
                onClick={handleDelete}
@@ -205,8 +196,6 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, appointment, onS
              >
                 {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                 <span className="text-xs font-black uppercase tracking-widest hidden sm:inline">Excluir</span>
-                
-                {/* Badge NOVO (Temporário) */}
                 {showNewBadge && (
                     <span className="absolute -top-2 -right-1 bg-amber-400 text-amber-950 text-[8px] px-1.5 py-0.5 rounded shadow-sm font-black animate-bounce">
                         NOVO
@@ -214,7 +203,7 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, appointment, onS
                 )}
              </button>
           ) : (
-            <div></div> // Spacer vazio para manter o alinhamento
+            <div></div>
           )}
 
           <div className="flex gap-3">
@@ -223,7 +212,7 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, appointment, onS
                 className="px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-500 hover:bg-white rounded-xl transition-colors border border-transparent hover:border-slate-200"
                 disabled={isSaving || isDeleting}
             >
-                Cancelar
+                CANCELAR
             </button>
             <button 
                 onClick={handleSave}
@@ -231,7 +220,7 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, appointment, onS
                 className="flex items-center gap-2 px-6 py-3 text-xs font-black text-white bg-blue-900 hover:bg-blue-800 rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-70 uppercase tracking-widest active:scale-95"
             >
                 {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                Salvar
+                SALVAR
             </button>
           </div>
         </div>

@@ -27,9 +27,14 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
     }
 
     setIsSaving(true);
-    await onSave({ data, periciado, perito, especialidade });
+    // Normalização final antes do save (também feita na API, mas boa prática aqui)
+    await onSave({ 
+      data, 
+      periciado: periciado.trim().toUpperCase(), 
+      perito: perito.trim().toUpperCase(), 
+      especialidade: especialidade.trim().toUpperCase() 
+    });
     
-    // Reset form
     setPericiado('');
     setPerito('');
     setEspecialidade('');
@@ -39,33 +44,27 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
 
   return (
     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       ></div>
 
-      {/* Modal Content */}
       <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all animate-in fade-in zoom-in duration-200">
         
-        {/* Header */}
         <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
           <div>
-            <h3 className="text-lg font-bold text-slate-800">Cadastrar Nova Perícia</h3>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Inclusão Manual na Pauta</p>
+            <h3 className="text-lg font-bold text-slate-800">CADASTRAR NOVA PERÍCIA</h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">INCLUSÃO MANUAL NA PAUTA</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
             <X size={20} />
           </button>
         </div>
 
-        {/* Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          
-          {/* Data */}
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-              <Calendar size={12} /> Data da Perícia
+              <Calendar size={12} /> DATA DA PERÍCIA
             </label>
             <input 
               type="date"
@@ -76,54 +75,51 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
             />
           </div>
 
-          {/* Nome do Periciado */}
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-              <User size={12} /> Nome do Periciado
+              <User size={12} /> NOME DO PERICIADO
             </label>
             <input 
               type="text"
               required
               value={periciado}
-              onChange={(e) => setPericiado(e.target.value)}
-              placeholder="Digite o nome completo"
-              className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-900 focus:bg-white transition-all shadow-sm placeholder:font-normal placeholder:text-slate-400"
+              onChange={(e) => setPericiado(e.target.value.toUpperCase())}
+              placeholder="DIGITE O NOME COMPLETO"
+              className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-900 focus:bg-white transition-all shadow-sm placeholder:font-normal placeholder:text-slate-400 uppercase"
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-             {/* Perito (Com Datalist) */}
              <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                  <Stethoscope size={12} /> Perito
+                  <Stethoscope size={12} /> PERITO
                 </label>
                 <input 
                   type="text"
                   required
                   list="peritos-list"
                   value={perito}
-                  onChange={(e) => setPerito(e.target.value)}
-                  placeholder="Selecione ou digite"
-                  className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-900 focus:bg-white transition-all shadow-sm placeholder:font-normal placeholder:text-slate-400"
+                  onChange={(e) => setPerito(e.target.value.toUpperCase())}
+                  placeholder="SELECIONE OU DIGITE"
+                  className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-900 focus:bg-white transition-all shadow-sm placeholder:font-normal placeholder:text-slate-400 uppercase"
                 />
                 <datalist id="peritos-list">
                     {existingPeritos.map(p => <option key={p} value={p} />)}
                 </datalist>
              </div>
 
-             {/* Especialidade (Com Datalist) */}
              <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                  <FileText size={12} /> Especialidade
+                  <FileText size={12} /> ESPECIALIDADE
                 </label>
                 <input 
                   type="text"
                   required
                   list="specialties-list"
                   value={especialidade}
-                  onChange={(e) => setEspecialidade(e.target.value)}
-                  placeholder="Selecione ou digite"
-                  className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-900 focus:bg-white transition-all shadow-sm placeholder:font-normal placeholder:text-slate-400"
+                  onChange={(e) => setEspecialidade(e.target.value.toUpperCase())}
+                  placeholder="SELECIONE OU DIGITE"
+                  className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-900 focus:bg-white transition-all shadow-sm placeholder:font-normal placeholder:text-slate-400 uppercase"
                 />
                  <datalist id="specialties-list">
                     {existingSpecialties.map(s => <option key={s} value={s} />)}
@@ -131,7 +127,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
              </div>
           </div>
 
-          {/* Footer Buttons */}
           <div className="pt-4 flex gap-3">
              <button 
                 type="button"
@@ -139,7 +134,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 disabled={isSaving}
                 className="flex-1 py-3 text-xs font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 rounded-xl transition-colors border border-transparent hover:border-slate-200"
              >
-                Cancelar
+                CANCELAR
              </button>
              <button 
                 type="submit"
@@ -147,7 +142,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClo
                 className="flex-[2] flex items-center justify-center gap-2 py-3 text-xs font-black text-white bg-blue-900 hover:bg-blue-800 rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-70 uppercase tracking-widest active:scale-95"
              >
                 {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                Cadastrar Perícia
+                CADASTRAR PERÍCIA
              </button>
           </div>
 
