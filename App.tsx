@@ -48,12 +48,8 @@ const AuthenticatedApp: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
   
-  // Notificações Toast (Temporárias)
   const [notification, setNotification] = useState<{ id: string; msg: string } | null>(null);
-
-  // Notificações do Sistema (Persistentes / Sino)
   const [globalMessages, setGlobalMessages] = useState<GlobalMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotifModalOpen, setIsNotifModalOpen] = useState(false);
@@ -63,6 +59,8 @@ const AuthenticatedApp: React.FC = () => {
   const [peritoFilter, setPeritoFilter] = useState('');
   const [specialtyFilter, setSpecialtyFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  
+  // Estados de Data inicializados com o dia atual para exibição inicial
   const [yearFilter, setYearFilter] = useState(todayDate.getFullYear().toString());
   const [monthFilter, setMonthFilter] = useState((todayDate.getMonth() + 1).toString().padStart(2, '0'));
   const [dayFilter, setDayFilter] = useState(todayDate.getDate().toString().padStart(2, '0'));
@@ -71,7 +69,6 @@ const AuthenticatedApp: React.FC = () => {
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
 
-  // Lógica de expiração do badge "NOVO"
   const showNewBadge = useMemo(() => {
     return new Date() < new Date(BADGE_EXPIRATION_DATE);
   }, []);
@@ -82,109 +79,43 @@ const AuthenticatedApp: React.FC = () => {
       const data = await fetchAppointments();
       setAppointments(data);
     } catch (err) {
-      setError('Erro ao carregar dados.');
+      console.error('Erro ao carregar pauta:', err);
     } finally {
       if (!silent) setLoading(false);
     }
   };
 
-  // Carrega mensagens e calcula não lidas
   const loadGlobalMessagesData = async () => {
       const msgs = await fetchGlobalMessages();
-      
-      setGlobalMessages((prev) => {
-         // Evita atualização de estado desnecessária se não mudou
-         if (prev.length === msgs.length && prev[0]?.id === msgs[0]?.id) return prev;
-         return msgs;
-      });
-
-      // Lógica de "Não Lidas": ID da mensagem > ID salvo no localStorage
-      // Chave atualizada para SIGPEF
+      setGlobalMessages(msgs);
       const lastReadId = Number(localStorage.getItem('sigpef_last_read_msg_id') || 0);
       const unread = msgs.filter(m => m.id > lastReadId).length;
       setUnreadCount(unread);
   };
 
-  // Helper para disparar notificação Toast
   const triggerNotification = (message: string) => {
-    setTimeout(() => {
-        setNotification({ 
-            id: `${Date.now()}-${Math.random()}`, 
-            msg: message 
-        });
-    }, 50);
+    setNotification({ 
+        id: `${Date.now()}-${Math.random()}`, 
+        msg: message 
+    });
   };
 
   useEffect(() => {
     loadData();
     loadGlobalMessagesData();
     
-    // SAFETY NET: Polling automático a cada 15s para garantir que mensagens cheguem
-    // mesmo se o WebSocket falhar (comum em redes corporativas/Justiça Federal)
-    const pollingInterval = setInterval(() => {
-        loadGlobalMessagesData();
-    }, 15000);
-
     if (supabase) {
-      // 1. Canal para Pauta e Presença (Tabelas Principais)
       const dataChannel = supabase
         .channel('system-data-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'pericias' }, (payload) => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pericias' }, () => {
           loadData(true); 
-          if (payload.eventType === 'UPDATE') {
-            const oldVal = payload.old;
-            const newVal = payload.new;
-            const nome = newVal?.periciado || 'Registro';
-            if (oldVal.observacao !== newVal.observacao) {
-              triggerNotification(`"${nome}": Status atualizado para ${newVal.observacao || 'PENDENTE'}`);
-            } else if (oldVal.periciado !== newVal.periciado) {
-              triggerNotification(`Nome corrigido na pauta: "${newVal.periciado}"`);
-            } 
-          } else if (payload.eventType === 'INSERT') {
-            const nome = payload.new?.periciado || 'Nova perícia';
-            triggerNotification(`Novo agendamento: ${nome}`);
-          }
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'controle_presenca' }, (payload) => {
-           if (payload.eventType === 'INSERT') {
-               const perito = payload.new?.perito || 'Perito';
-               triggerNotification(`Presença iniciada: ${perito}`);
-           } else if (payload.eventType === 'UPDATE') {
-               const perito = payload.new?.perito || 'Perito';
-               if (payload.new?.hora_saida && !payload.old?.hora_saida) {
-                   triggerNotification(`Saída registrada: ${perito}`);
-               } else {
-                   triggerNotification(`Registro de presença atualizado: ${perito}`);
-               }
-           }
-        })
-        .subscribe();
-
-      // 2. Canal Exclusivo para Mensagens Globais (Garante prioridade e separação)
-      const messagesChannel = supabase
-        .channel('global-messages-alert')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'global_messages' }, (payload) => {
-           // Nova mensagem global recebida via Socket (Instantânea)
-           const newMsg = payload.new as GlobalMessage;
-           
-           if (newMsg && newMsg.message) {
-              triggerNotification(`📢 AVISO GERAL: ${newMsg.message}`);
-              
-              // Atualização Otimista
-              setGlobalMessages((prev) => [newMsg, ...prev]);
-              setUnreadCount((prev) => prev + 1);
-           }
         })
         .subscribe();
 
       return () => {
         supabase.removeChannel(dataChannel);
-        supabase.removeChannel(messagesChannel);
-        clearInterval(pollingInterval);
       };
     }
-    
-    return () => clearInterval(pollingInterval);
   }, []);
 
   const uniquePeritos = useMemo(() => Array.from(new Set(appointments.map(a => a.perito))).filter(Boolean).sort(), [appointments]);
@@ -192,15 +123,29 @@ const AuthenticatedApp: React.FC = () => {
 
   const filteredAppointments = useMemo(() => {
     return appointments.filter(apt => {
+      // 1. Busca textual
       const matchesSearch = apt.periciado?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false;
-      const matchesPerito = peritoFilter ? apt.perito === peritoFilter : true;
-      const matchesSpecialty = specialtyFilter ? apt.especialidade === specialtyFilter : true;
-      const aptStatus = apt.observacao?.toUpperCase() || 'PENDENTE';
+      
+      // 2. Filtros de Profissional
+      const matchesPerito = !peritoFilter || apt.perito === peritoFilter;
+      const matchesSpecialty = !specialtyFilter || apt.especialidade === specialtyFilter;
+      
+      // 3. Filtro de Status
+      const aptStatus = (apt.observacao || 'PENDENTE').toUpperCase();
       const filterStatus = statusFilter?.toUpperCase();
-      const matchesStatus = statusFilter ? (filterStatus === 'PENDENTE' ? (!apt.observacao || aptStatus === '') : aptStatus.includes(filterStatus)) : true;
-      const [y, m, d] = (apt.data || '').split('-');
-      return matchesSearch && matchesPerito && matchesSpecialty && matchesStatus && 
-             (yearFilter ? y === yearFilter : true) && (monthFilter ? m === monthFilter : true) && (dayFilter ? d === dayFilter : true);
+      const matchesStatus = !statusFilter ? true : (filterStatus === 'PENDENTE' ? (!apt.observacao || apt.observacao === '') : aptStatus === filterStatus);
+      
+      // 4. Filtragem rigorosa por Data (YYYY-MM-DD)
+      if (!apt.data) return false;
+      const parts = apt.data.split('-');
+      if (parts.length !== 3) return false;
+      const [y, m, d] = parts;
+
+      const matchesYear = !yearFilter || y === yearFilter;
+      const matchesMonth = !monthFilter || m === monthFilter;
+      const matchesDay = !dayFilter || d === dayFilter;
+
+      return matchesSearch && matchesPerito && matchesSpecialty && matchesStatus && matchesYear && matchesMonth && matchesDay;
     });
   }, [appointments, searchTerm, peritoFilter, specialtyFilter, statusFilter, yearFilter, monthFilter, dayFilter]);
 
@@ -215,58 +160,26 @@ const AuthenticatedApp: React.FC = () => {
      if (success) {
        triggerNotification("Salvando alterações...");
        loadData(true);
-     } else {
-       alert("Erro ao salvar alteração. Verifique sua conexão.");
      }
   };
 
   const handleCreateAppointment = async (data: { data: string; periciado: string; perito: string; especialidade: string }) => {
-     // VALIDAÇÃO DE DUPLICIDADE: NOME + DATA
-     // Verificamos na base completa (appointments) se já existe o mesmo periciado na mesma data
-     const isDuplicate = appointments.some(apt => 
-        apt.periciado.trim().toLowerCase() === data.periciado.trim().toLowerCase() && 
-        apt.data === data.data
-     );
-
-     if (isDuplicate) {
-        const formattedDate = data.data.split('-').reverse().join('/');
-        alert(`ALERTA DE DUPLICIDADE:\n\nO periciado "${data.periciado}" JÁ POSSUI um agendamento para o dia ${formattedDate}.\n\nNão é permitido inserir a mesma pessoa mais de uma vez na mesma data.`);
-        return;
-     }
-
      const success = await createAppointment(data);
      if (success) {
         if (userProfile?.email) {
-            logSystemAction(userProfile.email, 'NOVA PERÍCIA', `Cadastrou perícia manual: ${data.periciado} com ${data.perito}`);
+            logSystemAction(userProfile.email, 'NOVA PERÍCIA', `Cadastrou perícia: ${data.periciado}`);
         }
-        triggerNotification("Perícia cadastrada com sucesso!");
+        triggerNotification("Perícia cadastrada!");
         loadData(true);
-     } else {
-        alert("Erro ao cadastrar. Verifique a conexão.");
      }
   };
 
   const handleDeleteAppointment = async (id: number | string) => {
     const success = await deleteAppointment(id);
     if (success) {
-      if (userProfile?.email) {
-          logSystemAction(userProfile.email, 'EXCLUIR PERÍCIA', `Excluiu perícia ID ${id}`);
-      }
-      triggerNotification("Perícia excluída com sucesso.");
-      setIsModalOpen(false); // Fecha o modal após excluir
+      triggerNotification("Perícia excluída.");
+      setIsModalOpen(false);
       loadData(true);
-    } else {
-      alert("Erro ao excluir. Verifique se você tem permissão ou sua conexão.");
-    }
-  };
-
-  const handleOpenNotifications = () => {
-    setIsNotifModalOpen(true);
-    // Ao abrir, marcamos como lido salvando o ID mais recente
-    if (globalMessages.length > 0) {
-      const latestId = Math.max(...globalMessages.map(m => m.id));
-      localStorage.setItem('sigpef_last_read_msg_id', latestId.toString());
-      setUnreadCount(0);
     }
   };
 
@@ -275,7 +188,6 @@ const AuthenticatedApp: React.FC = () => {
   return (
     <div className="min-h-screen max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 text-blue-900 relative">
       
-      {/* Toast flutuante para eventos rápidos */}
       {notification && (
         <NotificationToast 
           key={notification.id} 
@@ -284,7 +196,6 @@ const AuthenticatedApp: React.FC = () => {
         />
       )}
 
-      {/* Modal de Histórico de Mensagens */}
       <SystemNotificationsModal 
         isOpen={isNotifModalOpen}
         onClose={() => setIsNotifModalOpen(false)}
@@ -295,11 +206,11 @@ const AuthenticatedApp: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="bg-blue-900 p-2.5 rounded-xl shadow-lg relative">
              <Scale className="text-white" size={24} />
-             <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full animate-pulse shadow-sm" title="Realtime Ativo"></div>
+             <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full animate-pulse shadow-sm"></div>
           </div>
           <div>
             <h1 className="text-xl font-black text-blue-900 tracking-tight">SIG<span className="text-red-700">PEF</span></h1>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Sistema de Gestão de Perícias Federais • v{APP_VERSION}</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">v{APP_VERSION}</p>
           </div>
         </div>
 
@@ -314,7 +225,6 @@ const AuthenticatedApp: React.FC = () => {
             <button onClick={() => setCurrentView('reports')} className={`flex-1 md:flex-none px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${currentView === 'reports' ? 'bg-blue-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:text-blue-800'}`}>
               <FileText size={18} className="inline mr-2" /> Relatórios
             </button>
-            {/* Botão de Upload com Destaque NOVO */}
             {canEdit && (
                 <button onClick={() => setCurrentView('upload')} className={`relative flex-1 md:flex-none px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${currentView === 'upload' ? 'bg-blue-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:text-blue-800'}`}>
                   <CloudUpload size={18} className="inline mr-2" /> 
@@ -324,7 +234,6 @@ const AuthenticatedApp: React.FC = () => {
                   )}
                 </button>
             )}
-
             {isAdmin && (
               <button onClick={() => setCurrentView('admin_users')} className={`px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${currentView === 'admin_users' ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400'}`}>
                 <Users size={18} />
@@ -333,34 +242,14 @@ const AuthenticatedApp: React.FC = () => {
           </nav>
 
           <div className="flex items-center gap-2">
-            {/* Botão de Notificações (Sino) */}
-            <button 
-              onClick={handleOpenNotifications}
-              className="relative p-3.5 bg-white border border-slate-200 text-slate-600 hover:text-blue-900 rounded-2xl shadow-sm transition-all active:scale-90"
-            >
+            <button onClick={() => setIsNotifModalOpen(true)} className="relative p-3.5 bg-white border border-slate-200 text-slate-600 hover:text-blue-900 rounded-2xl shadow-sm transition-all active:scale-90">
               <Bell size={20} />
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[9px] font-black text-white ring-2 ring-white animate-pulse">
-                  {unreadCount > 9 ? '9+' : unreadCount}
+                  {unreadCount}
                 </span>
               )}
             </button>
-
-            {/* Desktop Name Display */}
-            <div className="hidden md:flex flex-col items-end mr-2">
-              <span className="text-xs font-black text-blue-900 uppercase">{(userProfile?.full_name || 'Usuário').split(' ')[0]}</span>
-              <span className="text-[9px] uppercase font-black text-slate-400 tracking-tighter flex items-center gap-1">
-                {isAdmin && <Shield size={10} className="text-red-600" />} {userProfile?.role}
-              </span>
-            </div>
-
-            {/* Mobile Name Display */}
-            <div className="md:hidden flex flex-col items-end mr-1">
-                 <span className="text-[10px] font-black text-blue-900 uppercase tracking-tight">
-                   {(userProfile?.full_name || 'Usuário').split(' ')[0]}
-                 </span>
-            </div>
-
             <button onClick={signOut} className="p-3.5 bg-white border border-slate-200 hover:text-red-600 rounded-2xl shadow-sm transition-all active:scale-90">
               <LogOut size={20} />
             </button>
@@ -375,14 +264,9 @@ const AuthenticatedApp: React.FC = () => {
             <div className="flex items-center justify-between mb-4">
                <h2 className="text-xl font-black text-blue-900 tracking-tight">Pauta de Perícias</h2>
                <div className="flex gap-2">
-                 {/* Botão de Nova Perícia (Apenas Editores/Admin) */}
                  {canEdit && (
-                    <button 
-                      onClick={() => setIsNewModalOpen(true)}
-                      className="flex items-center gap-2 px-4 py-2.5 bg-blue-900 hover:bg-black text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all relative"
-                    >
-                      <Plus size={16} /> 
-                      <span className="hidden sm:inline">Nova Perícia</span>
+                    <button onClick={() => setIsNewModalOpen(true)} className="flex items-center gap-2 px-4 py-2.5 bg-blue-900 hover:bg-black text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">
+                      <Plus size={16} /> <span>Nova Perícia</span>
                     </button>
                  )}
                  <button onClick={() => loadData()} className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-blue-600 shadow-sm transition-all">
@@ -404,19 +288,12 @@ const AuthenticatedApp: React.FC = () => {
             {loading ? (
               <div className="flex flex-col items-center justify-center py-32 text-slate-300">
                 <Loader2 className="animate-spin mb-4" size={40} />
-                <p className="text-[10px] font-black uppercase tracking-widest">Sincronizando com o Tribunal...</p>
+                <p className="text-[10px] font-black uppercase tracking-widest">Sincronizando...</p>
               </div>
             ) : (
               <AppointmentList 
                 appointments={filteredAppointments} 
-                onEdit={(apt) => { 
-                    if(canEdit) { 
-                        setSelectedAppointment(apt); 
-                        setIsModalOpen(true); 
-                    } else { 
-                        triggerNotification("Seu nível de acesso é apenas de leitura!");
-                    } 
-                }} 
+                onEdit={(apt) => { if(canEdit) { setSelectedAppointment(apt); setIsModalOpen(true); } }} 
               />
             )}
           </div>
@@ -427,21 +304,8 @@ const AuthenticatedApp: React.FC = () => {
         {currentView === 'admin_users' && isAdmin && <AdminUsersPage />}
       </main>
 
-      <EditModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        appointment={selectedAppointment} 
-        onSave={handleSaveAppointment} 
-        onDelete={handleDeleteAppointment}
-      />
-
-      <NewAppointmentModal 
-        isOpen={isNewModalOpen}
-        onClose={() => setIsNewModalOpen(false)}
-        onSave={handleCreateAppointment}
-        existingPeritos={uniquePeritos}
-        existingSpecialties={uniqueSpecialties}
-      />
+      <EditModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} appointment={selectedAppointment} onSave={handleSaveAppointment} onDelete={handleDeleteAppointment} />
+      <NewAppointmentModal isOpen={isNewModalOpen} onClose={() => setIsNewModalOpen(false)} onSave={handleCreateAppointment} existingPeritos={uniquePeritos} existingSpecialties={uniqueSpecialties} />
     </div>
   );
 };
@@ -451,7 +315,7 @@ const AppWrapper: React.FC = () => {
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
       <Loader2 className="animate-spin text-blue-900" size={40} />
-      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Verificando Credenciais...</p>
+      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Autenticando...</p>
     </div>
   );
   return session ? <AuthenticatedApp /> : <LoginPage />;
