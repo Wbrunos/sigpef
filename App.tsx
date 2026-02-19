@@ -122,7 +122,7 @@ const AuthenticatedApp: React.FC = () => {
   const uniqueSpecialties = useMemo(() => Array.from(new Set(appointments.map(a => a.especialidade))).filter(Boolean).sort(), [appointments]);
 
   const filteredAppointments = useMemo(() => {
-    return appointments.filter(apt => {
+    const result = appointments.filter(apt => {
       // 1. Busca textual
       const matchesSearch = apt.periciado?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false;
       
@@ -147,6 +147,15 @@ const AuthenticatedApp: React.FC = () => {
 
       return matchesSearch && matchesPerito && matchesSpecialty && matchesStatus && matchesYear && matchesMonth && matchesDay;
     });
+
+    // CRÍTICO: Ordenação manual no Frontend para garantir cronologia
+    // Como a API retorna por created_at DESC (para pegar os novos), aqui ordenamos visualmente por DATA.
+    return result.sort((a, b) => {
+        if (a.data < b.data) return -1;
+        if (a.data > b.data) return 1;
+        return 0;
+    });
+
   }, [appointments, searchTerm, peritoFilter, specialtyFilter, statusFilter, yearFilter, monthFilter, dayFilter]);
 
   const stats = useMemo<Stats>(() => {

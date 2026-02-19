@@ -72,11 +72,16 @@ export const fetchAppointments = async (): Promise<Appointment[]> => {
   if (!supabase) return [];
 
   try {
+    // ALTERAÇÃO CRÍTICA:
+    // 1. Aumentamos o limite para 20.000 para garantir que nada seja cortado.
+    // 2. Ordenamos por 'created_at' DESC (do mais novo para o mais antigo).
+    //    Isso garante que os registros que você ACABOU de importar (27/02/2026) sejam carregados,
+    //    mesmo que a ordenação de texto da data estivesse jogando-os para o fim da lista.
     const { data, error } = await supabase
       .from('pericias')
       .select('*')
-      .order('data_pericia', { ascending: true })
-      .limit(5000);
+      .order('created_at', { ascending: false }) 
+      .limit(20000);
 
     if (error) throw error;
 
