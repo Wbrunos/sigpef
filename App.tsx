@@ -16,7 +16,7 @@ import ReportsPage from './components/ReportsPage';
 import UploadPage from './components/UploadPage';
 import NotificationToast from './components/NotificationToast';
 import SystemNotificationsModal from './components/SystemNotificationsModal';
-import { Scale, Loader2, RefreshCw, LayoutDashboard, UserCheck, FileText, LogOut, Shield, Lock, Users, Bell, Plus, CloudUpload } from 'lucide-react';
+import { Scale, Loader2, RefreshCw, LayoutDashboard, UserCheck, FileText, LogOut, Shield, Lock, Users, Bell, Plus, CloudUpload, KeyRound, Save } from 'lucide-react';
 import { APP_VERSION, BADGE_EXPIRATION_DATE } from './constants';
 
 type ViewType = 'dashboard' | 'attendance' | 'reports' | 'admin_users' | 'upload';
@@ -43,6 +43,89 @@ const PendingApprovalScreen: React.FC<{ onLogout: () => void, onRefresh: () => v
   </div>
 );
 
+// Componente Modal de Recuperação de Senha
+const PasswordRecoveryModal: React.FC<{ isOpen: boolean, onClose: () => void, onSuccess: (msg: string) => void }> = ({ isOpen, onClose, onSuccess }) => {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      alert("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      alert("As senhas não coincidem.");
+      return;
+    }
+
+    setLoading(true);
+    if (!supabase) return;
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+    if (error) {
+      alert("Erro ao atualizar senha: " + error.message);
+    } else {
+      onSuccess("Sua senha foi atualizada com sucesso!");
+      onClose();
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm"></div>
+      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden p-8 animate-in fade-in zoom-in duration-300">
+        <div className="flex flex-col items-center text-center mb-6">
+           <div className="bg-blue-100 p-4 rounded-full text-blue-900 mb-4 shadow-inner">
+             <KeyRound size={32} />
+           </div>
+           <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Definir Nova Senha</h3>
+           <p className="text-sm font-medium text-slate-500 mt-2">Você acessou via link de recuperação. Por segurança, defina uma nova senha agora.</p>
+        </div>
+
+        <form onSubmit={handleUpdate} className="space-y-4">
+           <div>
+             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nova Senha</label>
+             <input 
+               type="password" 
+               required
+               className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-800 focus:border-blue-900 focus:outline-none transition-colors"
+               value={newPassword}
+               onChange={(e) => setNewPassword(e.target.value)}
+               placeholder="Mínimo 6 caracteres"
+             />
+           </div>
+           <div>
+             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirmar Senha</label>
+             <input 
+               type="password" 
+               required
+               className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-800 focus:border-blue-900 focus:outline-none transition-colors"
+               value={confirmPassword}
+               onChange={(e) => setConfirmPassword(e.target.value)}
+               placeholder="Repita a senha"
+             />
+           </div>
+           
+           <button 
+             type="submit" 
+             disabled={loading}
+             className="w-full py-4 bg-blue-900 hover:bg-black text-white rounded-xl text-xs font-black uppercase tracking-[0.2em] shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2 mt-4"
+           >
+             {loading ? <Loader2 className="animate-spin" /> : <Save size={16} />}
+             Salvar Nova Senha
+           </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const AuthenticatedApp: React.FC = () => {
   const { userProfile, signOut, canEdit, isAdmin, isApproved, refreshProfile } = useAuth();
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
@@ -68,6 +151,9 @@ const AuthenticatedApp: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+
+  // Estado para Modal de Recuperação de Senha
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
 
   const showNewBadge = useMemo(() => {
     return new Date() < new Date(BADGE_EXPIRATION_DATE);
@@ -105,15 +191,24 @@ const AuthenticatedApp: React.FC = () => {
     loadGlobalMessagesData();
     
     if (supabase) {
+      // Listener para Dados
       const dataChannel = supabase
         .channel('system-data-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'pericias' }, () => {
           loadData(true); 
         })
         .subscribe();
+      
+      // Listener para Eventos de Auth (Detectar Recuperação de Senha)
+      const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+           setIsRecoveryMode(true);
+        }
+      });
 
       return () => {
         supabase.removeChannel(dataChannel);
+        authListener.subscription.unsubscribe();
       };
     }
   }, []);
@@ -149,7 +244,6 @@ const AuthenticatedApp: React.FC = () => {
     });
 
     // CRÍTICO: Ordenação manual no Frontend para garantir cronologia
-    // Como a API retorna por created_at DESC (para pegar os novos), aqui ordenamos visualmente por DATA.
     return result.sort((a, b) => {
         if (a.data < b.data) return -1;
         if (a.data > b.data) return 1;
@@ -197,6 +291,13 @@ const AuthenticatedApp: React.FC = () => {
   return (
     <div className="min-h-screen max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 text-blue-900 relative">
       
+      {/* Modal de Recuperação de Senha (Prioridade Alta) */}
+      <PasswordRecoveryModal 
+         isOpen={isRecoveryMode} 
+         onClose={() => setIsRecoveryMode(false)}
+         onSuccess={triggerNotification}
+      />
+
       {notification && (
         <NotificationToast 
           key={notification.id} 
@@ -234,7 +335,11 @@ const AuthenticatedApp: React.FC = () => {
             <button onClick={() => setCurrentView('reports')} className={`flex-1 md:flex-none px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${currentView === 'reports' ? 'bg-blue-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:text-blue-800'}`}>
               <FileText size={18} className="inline mr-2" /> Relatórios
             </button>
-            {canEdit && (
+            {/* 
+               ALTERADO: Restrição de Upload agora é apenas para isAdmin.
+               O Editor pode editar pautas, mas não pode fazer upload.
+            */}
+            {isAdmin && (
                 <button onClick={() => setCurrentView('upload')} className={`relative flex-1 md:flex-none px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${currentView === 'upload' ? 'bg-blue-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:text-blue-800'}`}>
                   <CloudUpload size={18} className="inline mr-2" /> 
                   Upload
@@ -249,6 +354,16 @@ const AuthenticatedApp: React.FC = () => {
               </button>
             )}
           </nav>
+
+          {/* Nome do Usuário Logado - Restaurado */}
+          <div className="hidden md:flex flex-col items-end mr-2">
+            <span className="text-[11px] font-black text-blue-900 uppercase tracking-tight leading-tight">
+                {userProfile?.full_name || userProfile?.email?.split('@')[0] || 'Usuário'}
+            </span>
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                {isAdmin ? 'ADMINISTRADOR' : (canEdit ? 'EDITOR' : 'LEITOR')}
+            </span>
+          </div>
 
           <div className="flex items-center gap-2">
             <button onClick={() => setIsNotifModalOpen(true)} className="relative p-3.5 bg-white border border-slate-200 text-slate-600 hover:text-blue-900 rounded-2xl shadow-sm transition-all active:scale-90">
@@ -309,7 +424,8 @@ const AuthenticatedApp: React.FC = () => {
         )}
         {currentView === 'attendance' && <AttendancePage availablePeritos={uniquePeritos} />}
         {currentView === 'reports' && <ReportsPage allAppointments={appointments} />}
-        {currentView === 'upload' && <UploadPage />}
+        {/* Validação Extra para Upload: Só mostra se isAdmin for true */}
+        {currentView === 'upload' && isAdmin && <UploadPage />}
         {currentView === 'admin_users' && isAdmin && <AdminUsersPage />}
       </main>
 

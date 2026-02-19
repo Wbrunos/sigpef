@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../services/supabase';
 import { fetchSystemLogs, sendGlobalMessage, fetchGlobalMessages } from '../services/api'; 
 import { UserProfile, UserRole, LogEntry, GlobalMessage } from '../types';
-import { Shield, Check, X, Search, Loader2, User, AlertTriangle, List, Activity, Clock, Filter, Monitor, Calendar, MessageSquare, Send } from 'lucide-react';
+import { Shield, Check, X, Search, Loader2, User, AlertTriangle, List, Activity, Clock, Filter, Monitor, Calendar, MessageSquare, Send, KeyRound } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const AdminUsersPage: React.FC = () => {
@@ -85,6 +85,21 @@ const AdminUsersPage: React.FC = () => {
       alert("Erro ao atualizar usuário.");
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const handlePasswordReset = async (email: string) => {
+    if (!supabase) return;
+    if (!confirm(`Deseja enviar um e-mail de redefinição de senha para ${email}?`)) return;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin
+    });
+
+    if (error) {
+        alert("Erro ao enviar e-mail: " + error.message);
+    } else {
+        alert("E-mail de recuperação enviado com sucesso!");
     }
   };
 
@@ -258,6 +273,15 @@ const AdminUsersPage: React.FC = () => {
                               <Loader2 className="animate-spin ml-auto text-blue-900" size={18} />
                             ) : (
                               <div className="flex justify-end gap-2">
+                                  {/* Botão de Reset de Senha */}
+                                  <button
+                                    onClick={() => handlePasswordReset(user.email)}
+                                    className="p-2.5 text-slate-400 hover:text-amber-600 bg-slate-100 hover:bg-amber-50 rounded-xl transition-all"
+                                    title="Enviar e-mail de redefinição de senha"
+                                  >
+                                    <KeyRound size={18} />
+                                  </button>
+
                                   {!user.approved ? (
                                     <button 
                                       onClick={() => handleUpdateUser(user.id, { approved: true })}
